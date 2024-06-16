@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    <title>Comidas Tipicas Bolivianas</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+
+    <style>
+        #resultado {
+            font-weight: bold;
+            font-size: 2rem;
+            text-align: center;
+        }
+
+        .canvas-container {
+            margin: 0 auto;
+            border: 1px solid #ccc;
+        }
+
+        #captured-image {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="px-4 py-2 my-2 text-center border-bottom">
+            <img class="d-block mx-auto mb-2" src="logo.jpg" alt="" width="80" height="80">
+            <h1 class="display-5 fw-bold">Platos Tipicos de Bolivia</h1>
+            <div class="col-lg-6 mx-auto">
+                <p class="lead mb-0">
+                    Solo debes enfocar con la cámara de tu dispositivo elplato, y nuestra IA lo identificará al instante como uno de los deliciosos platos típicos de Bolivia.
+                </p>
+            </div>
+        </div>
+
+        <div class="b-example-divider"></div>
+
+        <div class="container mt-5">
+            <div class="row">
+                <div class="col-12 col-md-4 offset-md-4 text-center">
+                    <video id="video" playsinline autoplay style="width: 1px;"></video>
+                    <button class="btn btn-primary mb-2" id="cambiar-camara" onclick="cambiarCamara();">Cambiar camara</button>
+                    <canvas id="canvas" width="400" height="400" style="max-width: 100%;"></canvas>
+                    <canvas id="othercanvas" width="150" height="150" style="display: none"></canvas>
+                    <div id="resultado"></div>
+
+                    <button class="btn btn-success mt-2" id="tomar-foto" onclick="tomarFoto();">Tomar Foto</button>
+                    <input type="file" class="btn btn-secondary mt-2" id="subir-imagen" onchange="subirImagen(event);" accept="image/*">
+                    
+                    <div id="captured-image" class="mt-4">
+                        <img id="preview" src="" alt="" style="max-width: 100%;">
+                        <div id="foto-prediccion"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="b-example-divider"></div>
+
+        <div class="bg-dark text-secondary mt-5 px-4 py-2 text-center">
+            <div class="py-5">
+                <h1 class="display-5 fw-bold text-white">Grupo Perros</h1>
+            </div>
+        </div>
+
+        <div class="b-example-divider mb-0"></div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js"></script>
+
+    <script type="text/javascript">
+        let model = null;
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const size = 400;
+        let currentStream = null;
+        let facingMode = "user"; // Cambiar entre "user" y "environment"
+
+        (async () => {
+            console.log("Cargando modelo...");
+            model = await tf.loadLayersModel("carpeta_salida/model.json");
+            console.log("Modelo cargado...");
+        })();
+
+        window.onload = function() {
+            mostrarCamara();
+        };
+
+        function mostrarCamara() {
+            const opciones = {
+                audio: false,
+                video: {
+                    facingMode: facingMode,
+                    width: size,
+                    height: size
+                }
+            };
+
+            if (navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia(opciones)
+                    .then(function(stream) {
+                        currentStream = stream;
+                        video.srcObject = stream;
+                        video.onloadedmetadata = () => {
+                            video.play();
+                            procesarCamara();
+                            predecir();
+                        };
+                    })
+                    .catch(function(err) {
+                        alert("No se pudo utilizar la cámara :(");
+                        console.error("No se pudo utilizar la cámara:", err);
+                    });
+            } else {
+                alert("No existe la función getUserMedia... oops :( no se puede usar la cámara");
+            }
+        }
+
+        function cambiarCamara() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => {
+                    track.stop();
+                });
+            }
+            facingMode = facingMode === "user" ? "environment" : "user";
+            mostrarCamara();
+        }
+
+        function predecir() {
+            if (model) {
+                resample_single(canvas, 150, 150, document.getElementById("othercanvas"));
+                const ctx2 = document.getElementById("othercanvas").getContext("2d");
+                const imgData = ctx2.getImageData(0, 0, 150, 150);
+                const input = tf.browser.fromPixels(imgData).resizeNearestNeighbor([128, 128]).toFloat().div(tf.scalar(255)).expandDims();
+
+                model.predict(input).data().then(predictions => {
+                    const maxPrediction = predictions.indexOf(Math.max(...predictions));
+                    const classes = [
+                        'Aji_de_pataskha', 'caldo_de_bagre', 'Cazuelas', 'Chairo', 'Charquekan_Orureno',
+                        'chicharron', 'Chorizos', 'cunape', 'empanada_de_arroz', 'Falso_Conejo', 'faropa',
+                        'fricase', 'fritanga', 'Karapecho', 'keperi_beniano', 'La_kalapurka', 'locro',
+                        'majao', 'Mondongo', 'pacu', 'Pejerrey', 'Picana', 'Picante_de_Pollo', 'pique',
+                        'Ranga', 'Saice', 'silpancho', 'Sopa_de_Mani', 'Sopa_De_Quinua', 'sudado_de_surubi'
+                    ];
+                    document.getElementById("resultado").innerHTML = `Predicción: ${classes[maxPrediction]}`;
+                });
+            }
+            setTimeout(predecir, 150);
+        }
+
+        function procesarCamara() {
+            ctx.drawImage(video, 0, 0, size, size);
+            setTimeout(procesarCamara, 20);
+        }
+
+        function resample_single(canvas, width, height, resize_canvas) {
+            const width_source = canvas.width;
+            const height_source = canvas.height;
+            width = Math.round(width);
+            height = Math.round(height);
+
+            const ratio_w = width_source / width;
+            const ratio_h = height_source / height;
+            const ratio_w_half = Math.ceil(ratio_w / 2);
+            const ratio_h_half = Math.ceil(ratio_h / 2);
+
+            const ctx = canvas.getContext("2d");
+            const ctx2 = resize_canvas.getContext("2d");
+            const img = ctx.getImageData(0, 0, width_source, height_source);
+            const img2 = ctx2.createImageData(width, height);
+            const data = img.data;
+            const data2 = img2.data;
+
+            for (let j = 0; j < height; j++) {
+                for (let i = 0; i < width; i++) {
+                    const x2 = (i + j * width) * 4;
+                    let weight = 0;
+                    let weights = 0;
+                    let weights_alpha = 0;
+                    let gx_r = 0;
+                    let gx_g = 0;
+                    let gx_b = 0;
+                    let gx_a = 0;
+                    const center_y = (j + 0.5) * ratio_h;
+                    const yy_start = Math.floor(j * ratio_h);
+                    const yy_stop = Math.ceil((j + 1) * ratio_h);
+                    for (let yy = yy_start; yy < yy_stop; yy++) {
+                        const dy = Math.abs(center_y - (yy + 0.5)) / ratio_h_half;
+                        const center_x = (i + 0.5) * ratio_w;
+                        const w0 = dy * dy;
+                        const xx_start = Math.floor(i * ratio_w);
+                        const xx_stop = Math.ceil((i + 1) * ratio_w);
+                        for (let xx = xx_start; xx < xx_stop; xx++) {
+                            const dx = Math.abs(center_x - (xx + 0.5)) / ratio_w_half;
+                            const w = Math.sqrt(w0 + dx * dx);
+                            if (w >= 1) {
+                                continue;
+                            }
+                            weight = 2 * w * w * w - 3 * w * w + 1;
+                            const pos_x = 4 * (xx + yy * width_source);
+                            gx_a += weight * data[pos_x + 3];
+                            weights_alpha += weight;
+                            if (data[pos_x + 3] < 255) {
+                                weight = weight * data[pos_x + 3] / 250;
+                            }
+                            gx_r += weight * data[pos_x];
+                            gx_g += weight * data[pos_x + 1];
+                            gx_b += weight * data[pos_x + 2];
+                            weights += weight;
+                        }
+                    }
+                    data2[x2] = gx_r / weights;
+                    data2[x2 + 1] = gx_g / weights;
+                    data2[x2 + 2] = gx_b / weights;
+                    data2[x2 + 3] = gx_a / weights_alpha;
+                }
+            }
+            ctx2.putImageData(img2, 0, 0);
+        }
+
+        function tomarFoto() {
+            const canvas = document.getElementById("canvas");
+            const img = document.getElementById("preview");
+            const ctx2 = document.getElementById("othercanvas").getContext("2d");
+            ctx2.drawImage(canvas, 0, 0, 150, 150);
+            const imgData = ctx2.getImageData(0, 0, 150, 150);
+            const input = tf.browser.fromPixels(imgData).resizeNearestNeighbor([128, 128]).toFloat().div(tf.scalar(255)).expandDims();
+
+            model.predict(input).data().then(predictions => {
+                const maxPrediction = predictions.indexOf(Math.max(...predictions));
+                const classes = [
+                    'Aji_de_pataskha', 'caldo_de_bagre', 'Cazuelas', 'Chairo', 'Charquekan_Orureno',
+                    'chicharron', 'Chorizos', 'cunape', 'empanada_de_arroz', 'Falso_Conejo', 'faropa',
+                    'fricase', 'fritanga', 'Karapecho', 'keperi_beniano', 'La_kalapurka', 'locro',
+                    'majao', 'Mondongo', 'pacu', 'Pejerrey', 'Picana', 'Picante_de_Pollo', 'pique',
+                    'Ranga', 'Saice', 'silpancho', 'Sopa_de_Mani', 'Sopa_De_Quinua', 'sudado_de_surubi'
+                ];
+
+                img.src = canvas.toDataURL();
+                document.getElementById("foto-prediccion").innerHTML = `Predicción: ${classes[maxPrediction]}`;
+            });
+        }
+
+        function subirImagen(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            const img = document.getElementById("preview");
+
+            reader.onload = function(e) {
+                img.src = e.target.result;
+                img.onload = function() {
+                    const ctx2 = document.getElementById("othercanvas").getContext("2d");
+                    ctx2.drawImage(img, 0, 0, 150, 150);
+                    const imgData = ctx2.getImageData(0, 0, 150, 150);
+                    const input = tf.browser.fromPixels(imgData).resizeNearestNeighbor([128, 128]).toFloat().div(tf.scalar(255)).expandDims();
+
+                    model.predict(input).data().then(predictions => {
+                        const maxPrediction = predictions.indexOf(Math.max(...predictions));
+                        const classes = [
+                            'Aji_de_pataskha', 'caldo_de_bagre', 'Cazuelas', 'Chairo', 'Charquekan_Orureno',
+                            'chicharron', 'Chorizos', 'cunape', 'empanada_de_arroz', 'Falso_Conejo', 'faropa',
+                            'fricase', 'fritanga', 'Karapecho', 'keperi_beniano', 'La_kalapurka', 'locro',
+                            'majao', 'Mondongo', 'pacu', 'Pejerrey', 'Picana', 'Picante_de_Pollo', 'pique',
+                            'Ranga', 'Saice', 'silpancho', 'Sopa_de_Mani', 'Sopa_De_Quinua', 'sudado_de_surubi'
+                        ];
+                        document.getElementById("foto-prediccion").innerHTML = `Predicción: ${classes[maxPrediction]}`;
+                    });
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    </script>
+</body>
+</html>
+
