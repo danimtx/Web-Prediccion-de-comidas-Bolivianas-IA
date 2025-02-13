@@ -1,5 +1,5 @@
 # Clasificación de Comidas bolivianas
-by Daniel Mancilla
+by danimtx
 
 Se trata de un clasificador en tiempo real de comidas bolivianas. Puede utilizarse en el celular, solo apunta con la cámara al plato para saber el nombre, lo hace todo en el explorador utilizando Tensorflow.js, en base aun modelo entrenado en Python con Tensorflow
 
